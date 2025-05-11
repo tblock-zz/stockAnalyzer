@@ -1,6 +1,7 @@
 # Stock Analyzer
 
 The `stockAnalyzer.py` script is a Python-based application for analyzing stock data. It provides a graphical user interface (GUI) for fetching, processing, and visualizing stock data, including technical indicators such as Moving Averages, Bollinger Bands, MACD, RSI, and Stochastic Oscillator.
+![Screenshot](screenshot.png)
 
 ## Features
 
