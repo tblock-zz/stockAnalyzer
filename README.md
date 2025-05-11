@@ -63,7 +63,7 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 - **Missing Data**: Ensure the ticker symbol is valid and data is available on Yahoo Finance.
 
 ## License
-TBD
+Apache-2.0 license 
 
 ## Acknowledgments
 
