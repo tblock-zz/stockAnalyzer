@@ -20,10 +20,9 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 
 ## Requirements
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Required Python libraries:
   - `pandas`
-  - `numpy`
   - `matplotlib`
   - `mplfinance`
   - `yfinance`
@@ -60,8 +59,7 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 
 ## Troubleshooting
 
-- **Rate Limits**: If you encounter rate limits from Yahoo Finance, the script uses `curl_cffi` to handle them.
-- **Missing Data**: Ensure the ticker symbol is valid and data is available on Yahoo Finance.
+- **Rate Limits**: The script uses `curl_cffi` to handle the rate limits failure when using Yahoo Finance.
 
 ## License
 Apache-2.0 license 

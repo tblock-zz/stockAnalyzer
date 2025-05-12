@@ -3,7 +3,6 @@ import tkinter as tk
 from tkinter import ttk, messagebox, Listbox, Scrollbar, END, simpledialog
 import yfinance as yf
 import pandas as pd
-# import numpy as np
 import datetime
 import mplfinance as mpf
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
@@ -75,21 +74,21 @@ class IndicatorCalculator:
       if window <= len(df):
         df[f'SMA_{window}'] = df['Close'].rolling(window=window, min_periods=1).mean()
       else:
-        df[f'SMA_{window}'] = pd.NA
+        df[f'Sma{window}'] = pd.NA
     return df
   #--------------------------------------------------------------------------------------------------------------------------------
   def addBollingerBands(self, dataFrame: pd.DataFrame, window: int = 20, numStdDev: int = 2) -> pd.DataFrame:
     df = dataFrame.copy()
     if 'Close' not in df.columns: return df
     if window <= len(df):
-      df['BB_Middle'] = df['Close'].rolling(window=window, min_periods=1).mean()
+      df['BbMiddle'] = df['Close'].rolling(window=window, min_periods=1).mean()
       stdDev = df['Close'].rolling(window=window, min_periods=1).std()
-      df['BB_Upper'] = df['BB_Middle'] + (stdDev * numStdDev)
-      df['BB_Lower'] = df['BB_Middle'] - (stdDev * numStdDev)
+      df['BbUpper'] = df['BbMiddle'] + (stdDev * numStdDev)
+      df['BbLower'] = df['BbMiddle'] - (stdDev * numStdDev)
     else:
-      df['BB_Middle'] = pd.NA
-      df['BB_Upper'] = pd.NA
-      df['BB_Lower'] = pd.NA
+      df['BbMiddle'] = pd.NA
+      df['BbUpper'] = pd.NA
+      df['BbLower'] = pd.NA
     return df
   #--------------------------------------------------------------------------------------------------------------------------------
   def addMacd(self, dataFrame: pd.DataFrame, shortWindow: int = 12, longWindow: int = 26, signalWindow: int = 9) -> pd.DataFrame:
@@ -100,15 +99,15 @@ class IndicatorCalculator:
       longEma = df['Close'].ewm(span=longWindow, adjust=False, min_periods=1).mean()
       df['MACD'] = shortEma - longEma
       if signalWindow <= len(df['MACD'].dropna()):
-        df['MACD_Signal'] = df['MACD'].ewm(span=signalWindow, adjust=False, min_periods=1).mean()
-        df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
+        df['MacdSignal'] = df['MACD'].ewm(span=signalWindow, adjust=False, min_periods=1).mean()
+        df['MacdHist'] = df['MACD'] - df['MacdSignal']
       else:
-        df['MACD_Signal'] = pd.NA
-        df['MACD_Hist'] = pd.NA
+        df['MacdSignal'] = pd.NA
+        df['MacdHist'] = pd.NA
     else:
       df['MACD'] = pd.NA
-      df['MACD_Signal'] = pd.NA
-      df['MACD_Hist'] = pd.NA
+      df['MacdSignal'] = pd.NA
+      df['MacdHist'] = pd.NA
     return df
   #--------------------------------------------------------------------------------------------------------------------------------
   def addRsi(self, dataFrame: pd.DataFrame, window: int = 14) -> pd.DataFrame:
@@ -182,15 +181,15 @@ class ChartingUtils:
   #--------------------------------------------------------------------------------------------------------------------------------
   def addSmaPlotsManual(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]], windows: List[int] = [10, 20, 50, 100, 200]):
     for window in windows:
-      colName = f'SMA_{window}'
+      colName = f'Sma{window}'
       if colName in plotDf.columns and not plotDf[colName].isnull().all():
         addPlots.append(mpf.make_addplot(plotDf[colName], panel=0, width=0.7))
   #--------------------------------------------------------------------------------------------------------------------------------
   def addBollingerBandsToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]]):
-    if 'BB_Upper' in plotDf.columns and 'BB_Lower' in plotDf.columns:
-      if not plotDf['BB_Upper'].isnull().all() and not plotDf['BB_Lower'].isnull().all():
-        addPlots.append(mpf.make_addplot(plotDf['BB_Upper'], panel=0, color='darkgray', linestyle='--', width=0.7))
-        addPlots.append(mpf.make_addplot(plotDf['BB_Lower'], panel=0, color='darkgray', linestyle='--', width=0.7))
+    if 'BbUpper' in plotDf.columns and 'BbLower' in plotDf.columns:
+      if not plotDf['BbUpper'].isnull().all() and not plotDf['BbLower'].isnull().all():
+        addPlots.append(mpf.make_addplot(plotDf['BbUpper'], panel=0, color='darkgray', linestyle='--', width=0.7))
+        addPlots.append(mpf.make_addplot(plotDf['BbLower'], panel=0, color='darkgray', linestyle='--', width=0.7))
   #--------------------------------------------------------------------------------------------------------------------------------
   def addVolumeToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]]):
     if 'Volume' in plotDf.columns and not plotDf['Volume'].isnull().all() and plotDf['Volume'].sum() > 0 :
@@ -201,10 +200,10 @@ class ChartingUtils:
   def addMacdToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]], currentPanelId: int) -> bool:
     if 'MACD' in plotDf.columns and not plotDf['MACD'].isnull().all():
       addPlots.append(mpf.make_addplot(plotDf['MACD'], panel=currentPanelId, color='dodgerblue', ylabel='MACD', width=0.8))
-      if 'MACD_Signal' in plotDf.columns and not plotDf['MACD_Signal'].isnull().all():
-        addPlots.append(mpf.make_addplot(plotDf['MACD_Signal'], panel=currentPanelId, color='orangered', width=0.8))
-      if 'MACD_Hist' in plotDf.columns and not plotDf['MACD_Hist'].isnull().all():
-        macdHistNumeric = pd.to_numeric(plotDf['MACD_Hist'], errors='coerce').fillna(0)
+      if 'MacdSignal' in plotDf.columns and not plotDf['MacdSignal'].isnull().all():
+        addPlots.append(mpf.make_addplot(plotDf['MacdSignal'], panel=currentPanelId, color='orangered', width=0.8))
+      if 'MacdHist' in plotDf.columns and not plotDf['MacdHist'].isnull().all():
+        macdHistNumeric = pd.to_numeric(plotDf['MacdHist'], errors='coerce').fillna(0)
         if not macdHistNumeric.isnull().all() and (macdHistNumeric != 0).any():
           macdHistGreen = macdHistNumeric.where(macdHistNumeric >= 0, 0)
           macdHistRed = macdHistNumeric.where(macdHistNumeric < 0, 0)
