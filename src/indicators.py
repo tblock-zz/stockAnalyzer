@@ -1,20 +1,29 @@
 import pandas as pd
+import numpy as np
 from typing import List, Dict, Any, Optional, Tuple
 #--------------------------------------------------------------------------------------------------------------------------------
 class Calculator:
+  def __init__(self):
+    self.df = pd.DataFrame()  
   #--------------------------------------------------------------------------------------------------------------------------------
-  def addSmas(self, dataFrame: pd.DataFrame, windows: List[int] = [10, 20, 50, 100, 200]) -> pd.DataFrame:
-    df = dataFrame.copy()
+  def setDataframe(self, df: pd.DataFrame) -> 'Calculator': 
+    self.df = df.copy()
+    return self
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def get(self) -> pd.DataFrame: 
+    return self.df
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def addSmas(self, windows: List[int] = [10, 20, 50, 100, 200]):
+    df = self.df
     if 'Close' not in df.columns: return df
     for window in windows:
       if window <= len(df):
-        df[f'SMA_{window}'] = df['Close'].rolling(window=window, min_periods=1).mean()
+        df[f'Sma{window}'] = df['Close'].rolling(window=window, min_periods=1).mean()
       else:
         df[f'Sma{window}'] = pd.NA
-    return df
   #--------------------------------------------------------------------------------------------------------------------------------
-  def addBollingerBands(self, dataFrame: pd.DataFrame, window: int = 20, numStdDev: int = 2) -> pd.DataFrame:
-    df = dataFrame.copy()
+  def addBollingerBands(self, window: int = 20, numStdDev: int = 2):
+    df = self.df
     if 'Close' not in df.columns: return df
     if window <= len(df):
       df['BbMiddle'] = df['Close'].rolling(window=window, min_periods=1).mean()
@@ -25,10 +34,9 @@ class Calculator:
       df['BbMiddle'] = pd.NA
       df['BbUpper'] = pd.NA
       df['BbLower'] = pd.NA
-    return df
   #--------------------------------------------------------------------------------------------------------------------------------
-  def addMacd(self, dataFrame: pd.DataFrame, shortWindow: int = 12, longWindow: int = 26, signalWindow: int = 9) -> pd.DataFrame:
-    df = dataFrame.copy()
+  def addMacd(self, shortWindow: int = 12, longWindow: int = 26, signalWindow: int = 9):
+    df = self.df
     if 'Close' not in df.columns: return df
     if longWindow <= len(df):
       shortEma = df['Close'].ewm(span=shortWindow, adjust=False, min_periods=1).mean()
@@ -44,10 +52,9 @@ class Calculator:
       df['MACD'] = pd.NA
       df['MacdSignal'] = pd.NA
       df['MacdHist'] = pd.NA
-    return df
   #--------------------------------------------------------------------------------------------------------------------------------
-  def addRsi(self, dataFrame: pd.DataFrame, window: int = 14) -> pd.DataFrame:
-    df = dataFrame.copy()
+  def addRsi(self, window: int = 14):
+    df = self.df
     if 'Close' not in df.columns: return df
     if window < len(df):
       delta = df['Close'].diff(1)
@@ -58,10 +65,9 @@ class Calculator:
       df['RSI'] = df['RSI'].fillna(50)
     else:
       df['RSI'] = 50.0
-    return df
   #--------------------------------------------------------------------------------------------------------------------------------
-  def addStochastic(self, dataFrame: pd.DataFrame, kWindow: int = 14, dWindow: int = 3) -> pd.DataFrame:
-    df = dataFrame.copy()
+  def addStochastic(self, kWindow: int = 14, dWindow: int = 3):
+    df = self.df
     if 'Close' not in df.columns or 'Low' not in df.columns or 'High' not in df.columns: return df
     if kWindow <= len(df):
       lowMin = df['Low'].rolling(window=kWindow, min_periods=1).min()
@@ -77,4 +83,18 @@ class Calculator:
     else:
       df['%K'] = 50.0
       df['%D'] = 50.0
-    return df
+  #----------------------------------------------------------------------------------------------------------------------  
+  def addVolatility(self):
+    # from https://www.learnpythonwithrune.org/calculate-the-volatility-of-historic-stock-prices-with-pandas-and-python/
+    self.df['Vola'] = np.log(self.df['Close']/self.df['Close'].shift()).std()*252**.5*100
+  #----------------------------------------------------------------------------------------------------------------------  
+  def calculate(self)-> 'Calculator':
+    if not self.df.empty: 
+      self.addSmas()
+      self.addBollingerBands()
+      self.addMacd()
+      self.addRsi()
+      self.addStochastic()
+      #df = self.addVolatility()
+    return self
+    

@@ -782,31 +782,25 @@ class StockAnalyzerApp:
       print(f"No data to process for indicators for {tickerSymbol} ({interval}).")
       return None
 
-    dfWithIndicators = dataFrame.copy()
-    if isinstance(dfWithIndicators.index, pd.DatetimeIndex) and dfWithIndicators.index.tz is not None:
-      dfWithIndicators.index = dfWithIndicators.index.tz_convert(None)
-
-    dfWithIndicators = self.indicatorCalc.addSmas(dfWithIndicators)
-    dfWithIndicators = self.indicatorCalc.addBollingerBands(dfWithIndicators)
-    dfWithIndicators = self.indicatorCalc.addMacd(dfWithIndicators)
-    dfWithIndicators = self.indicatorCalc.addRsi(dfWithIndicators)
-    dfWithIndicators = self.indicatorCalc.addStochastic(dfWithIndicators)
-
-    displayStartDateTsNaive = displayStartDateTs.tz_localize(None) if dfWithIndicators.index.tz is None and displayStartDateTs.tz is not None else displayStartDateTs
+    df = dataFrame.copy()
+    if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+      df.index = df.index.tz_convert(None)
+    df = self.indicatorCalc.setDataframe(df).calculate().get()
+    displayStartDateTsNaive = displayStartDateTs.tz_localize(None) if df.index.tz is None and displayStartDateTs.tz is not None else displayStartDateTs
     
-    dfWithIndicators.sort_index(inplace=True)
+    df.sort_index(inplace=True)
     try:
-      filteredDf = dfWithIndicators[dfWithIndicators.index >= displayStartDateTsNaive]
+      filteredDf = df[df.index >= displayStartDateTsNaive]
       if filteredDf.empty:
         print(f"Warning: After filtering by display start date {displayStartDateTsNaive}, DataFrame for {tickerSymbol} ({interval}) is empty.")
-        return pd.DataFrame(columns=dfWithIndicators.columns, index=pd.to_datetime([]))
+        return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
       return filteredDf
     except TypeError as te:
       print(f"TypeError during date filtering for {tickerSymbol} ({interval}): {te}")
-      return pd.DataFrame(columns=dfWithIndicators.columns, index=pd.to_datetime([]))
+      return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
     except Exception as eFilter:
       print(f"Unexpected error during date filtering for {tickerSymbol} ({interval}): {eFilter}")
-      return pd.DataFrame(columns=dfWithIndicators.columns, index=pd.to_datetime([]))
+      return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
   #--------------------------------------------------------------------------------------------------------------------------------
   def fetchAndProcessIntervalData(self, tickerSymbol: str, startDateParam: datetime.date, endDateParam: datetime.date, displayStartDateTs: pd.Timestamp, interval: str) -> Optional[pd.DataFrame]:
     parquetFilePath = loader.constructParquetFilePath(tickerSymbol, interval)
