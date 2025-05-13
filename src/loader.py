@@ -153,4 +153,34 @@ def determineFetchParameters(localData: Optional[pd.DataFrame],
     baseDfForMerge = pd.DataFrame()
 
   return fetchStartDate, baseDfForMerge
-  
+#--------------------------------------------------------------------------------------------------------------------------------
+def loadStockListFromFile(filename: str = "listStocks") -> List[str]:
+  defaultStocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'VOW.DE', 'META', 'JPM', 'BTC-USD', 'ETH-USD']
+  scriptDir = os.path.dirname(os.path.abspath(__file__))
+  filePath = os.path.join(scriptDir, filename)
+  stocks = None
+  try:
+    with open(filePath, 'r') as f:
+      stocks = [line.strip() for line in f if line.strip()]
+    if not stocks:
+      print(f"Warning: Stock file '{filePath}' is empty. Using default stocks.")
+  except FileNotFoundError:
+    print(f"Warning: Stock file '{filePath}' not found. Using default stocks and creating file.")
+  except Exception as e:
+    print(f"Error reading stock file '{filePath}': {e}. Using default stocks.")
+    stocks = defaultStocks
+  finally:
+    if not stocks:
+      saveStockListToFile(defaultStocks, filename)
+    return stocks if stocks else defaultStocks
+#--------------------------------------------------------------------------------------------------------------------------------
+def saveStockListToFile(tickers, filename: str = "listStocks"):
+  scriptDir = os.path.dirname(os.path.abspath(__file__))
+  filePath = os.path.join(scriptDir, filename)
+  try:
+    with open(filePath, 'w') as f:
+      for ticker in tickers:
+        f.write(f"{ticker}\n")
+    print(f"Stocklist saved to '{filePath}'.")
+  except Exception as e:
+    print(f"Error saving stocklist to '{filePath}': {e}")

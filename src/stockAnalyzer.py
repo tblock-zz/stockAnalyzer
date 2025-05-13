@@ -13,17 +13,6 @@ import os
 import loader 
 import indicators
 #--------------------------------------------------------------------------------------------------------------------------------
-def saveStockListToFile(tickers, filename: str = "listStocks"):
-  scriptDir = os.path.dirname(os.path.abspath(__file__))
-  filePath = os.path.join(scriptDir, filename)
-  try:
-    with open(filePath, 'w') as f:
-      for ticker in tickers:
-        f.write(f"{ticker}\n")
-    print(f"Stocklist saved to '{filePath}'.")
-  except Exception as e:
-    print(f"Error saving stocklist to '{filePath}': {e}")
-#--------------------------------------------------------------------------------------------------------------------------------
 def calculateDateRanges(yearsToDisplay: int) -> Tuple[datetime.date, datetime.date, pd.Timestamp]:
   if not (1 <= yearsToDisplay <= 20): yearsToDisplay = 2
   endDate = datetime.date.today()
@@ -113,7 +102,6 @@ class ChartingUtils:
     plotDf = dataFrame.copy()
     if 'Volume' not in plotDf.columns:
       plotDf['Volume'] = 0
-
     plotDf.dropna(subset=requiredOhlcCols, how='any', inplace=True)
     plotDf['Volume'] = plotDf['Volume'].fillna(0)
 
@@ -285,27 +273,26 @@ class ChartingUtils:
                               dataFrame: pd.DataFrame,
                               tickerSymbol: str,
                               chartTimeframe: str = 'Daily',
-                              useManualSmas: bool = False,
-                              manualSmaWindows: List[int] = [10, 20, 50, 100, 200],
-                              movingAverageWindows: Optional[Tuple[int, ...]] = (20, 50, 100, 200),
+                              movingAverageWindows: Optional[Tuple[int, ...]] = (10, 20, 50, 100, 200),
                               rsiYlabelOverride: Optional[str] = None,
                               figsize: Tuple[float, float] = (9, 5.5)
                               ) -> plt.Figure:
     plotDf = self.preparePlotData(dataFrame, tickerSymbol, chartTimeframe)
     if plotDf is None:
       msg = f"Data preparation failed for\n{chartTimeframe} chart of {tickerSymbol}"
-      if dataFrame.empty or len(dataFrame) < 2: msg = f"No data or not enough data for\n{chartTimeframe} chart of {tickerSymbol}"
-      elif not all(col in dataFrame.columns for col in ['Open', 'High', 'Low', 'Close']): msg = f"Missing essential OHLC columns for\n{chartTimeframe} chart of {tickerSymbol}"
-      elif not isinstance(dataFrame.index, pd.DatetimeIndex) and (isinstance(dataFrame.index, pd.Index) and not isinstance(pd.to_datetime(dataFrame.index, errors='coerce'), pd.DatetimeIndex)): msg = f"Invalid date index for {chartTimeframe} chart of {tickerSymbol}"
-      else: msg = f"Not enough valid OHLCV data after cleaning for\n{chartTimeframe} chart of {tickerSymbol}"
+      if dataFrame.empty or len(dataFrame) < 2:
+        msg = f"No data or not enough data for\n{chartTimeframe} chart of {tickerSymbol}"
+      elif not all(col in dataFrame.columns for col in ['Open', 'High', 'Low', 'Close']):
+        msg = f"Missing essential OHLC columns for\n{chartTimeframe} chart of {tickerSymbol}"
+      elif not isinstance(dataFrame.index, pd.DatetimeIndex) and (isinstance(dataFrame.index, pd.Index) and not isinstance(pd.to_datetime(dataFrame.index, errors='coerce'), pd.DatetimeIndex)):
+        msg = f"Invalid date index for {chartTimeframe} chart of {tickerSymbol}"
+      else:
+        msg = f"Not enough valid OHLCV data after cleaning for\n{chartTimeframe} chart of {tickerSymbol}"
       return self.createErrorFigure(msg)
 
     addPlots: List[Dict[str, Any]] = []
-    mavParamForPlot = None
-    if useManualSmas:
-      self.addSmaPlotsManual(plotDf, addPlots, windows=manualSmaWindows)
-    else:
-      mavParamForPlot = movingAverageWindows
+    mavParamForPlot = movingAverageWindows
+    self.addSmaPlotsManual(plotDf, addPlots, windows=movingAverageWindows)
 
     self.addBollingerBandsToPlot(plotDf, addPlots)
     self.addVolumeToPlot(plotDf, addPlots)
@@ -325,14 +312,17 @@ class ChartingUtils:
                   update_width_config=dict(candle_linewidth=0.7, candle_width=0.6) )
     except Exception as e:
       print(f"Error during mplfinance.plot for {tickerSymbol} ({chartTimeframe}): {e}")
-      import traceback; traceback.print_exc()
+      import traceback; 
+      traceback.print_exc()
       return self.createErrorFigure(f"Plotting error for {tickerSymbol} ({chartTimeframe}):\n{str(e)[:100]}")
 
     if fig is None:
       return self.createErrorFigure(f"Figure generation failed for {tickerSymbol} ({chartTimeframe}).")
 
-    try: fig.subplots_adjust(left=0.08, bottom=0.12, right=0.92, top=0.92, hspace=0.3)
-    except Exception as e: print(f"Warning: subplots_adjust failed: {e}")
+    try:
+      fig.subplots_adjust(left=0.08, bottom=0.12, right=0.92, top=0.92, hspace=0.3)
+    except Exception as e:
+      print(f"Warning: subplots_adjust failed: {e}")
 
     self.applyAxisLabelAdjustments(returnedAxesObject, tickerSymbol, chartTimeframe, addPlots)
     return fig
@@ -352,7 +342,7 @@ class StockAnalyzerApp:
 
     self.currentTicker = tk.StringVar(value='AAPL')
     self.stockList = []
-    self.stockList = self.loadStockListFromFile()
+    self.stockList = loader.loadStockListFromFile()
 
     self.dailyChartCanvas: Optional[FigureCanvasTkAgg] = None
     self.weeklyChartCanvas: Optional[FigureCanvasTkAgg] = None
@@ -367,26 +357,6 @@ class StockAnalyzerApp:
     if self.stockList:
       self.tickerListBox.selection_set(0)
       self.handleTickerSelect(None)
-  #--------------------------------------------------------------------------------------------------------------------------------
-  def loadStockListFromFile(self, filename: str = "listStocks") -> List[str]:
-    defaultStocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'VOW.DE', 'META', 'JPM', 'BTC-USD', 'ETH-USD']
-    scriptDir = os.path.dirname(os.path.abspath(__file__))
-    filePath = os.path.join(scriptDir, filename)
-    stocks = None
-    try:
-      with open(filePath, 'r') as f:
-        stocks = [line.strip() for line in f if line.strip()]
-      if not stocks:
-        print(f"Warning: Stock file '{filePath}' is empty. Using default stocks.")
-    except FileNotFoundError:
-      print(f"Warning: Stock file '{filePath}' not found. Using default stocks and creating file.")
-    except Exception as e:
-      print(f"Error reading stock file '{filePath}': {e}. Using default stocks.")
-      stocks = defaultStocks
-    finally:
-      if not stocks:
-        saveStockListToFile(defaultStocks, filename)
-      return stocks if stocks else defaultStocks
   #--------------------------------------------------------------------------------------------------------------------------------
   def setupWatchlistPane(self, parentPane: ttk.PanedWindow):
     widthWatchlist = 1
