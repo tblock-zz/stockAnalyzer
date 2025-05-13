@@ -22,11 +22,14 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 
 - Python 3.10 or higher
 - Required Python libraries:
+  - `datetime`
   - `pandas`
   - `matplotlib`
   - `mplfinance`
   - `yfinance`
   - `tkinter` (built-in with Python)
+  - `threading`
+  - `typing`
   - `curl_cffi` (for handling rate limits in `yfinance`)
 
 ## Installation
@@ -34,7 +37,7 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 1. Clone the repository or download the `stockAnalyzer.py` file.
 2. Install the required dependencies using pip:
    ```bash
-   pip install pandas numpy matplotlib mplfinance yfinance curl-cffi
+   pip install pandas numpy matplotlib mplfinance yfinance curl-cffi datetime threading typing
    ```
 3. Run the script:
    ```bash
