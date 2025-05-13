@@ -80,8 +80,8 @@ class Calculator:
       ema_up    = up  .ewm(com=10, adjust=False).mean()
       ema_down  = down.ewm(com=7, adjust=False).mean()
       rs        = ema_up/ema_down
-      df['RSI'] = 100 - (100/(1 + rs))
-      df['RSI'] = df['RSI'].fillna(50)
+      df['Rsi'] = 100 - (100/(1 + rs))
+      df['Rsi'] = df['Rsi'].fillna(50)
 
     else:
       if window < len(df):
@@ -89,10 +89,10 @@ class Calculator:
         gain = (delta.where(delta > 0, 0.0)).rolling(window=window, min_periods=1).mean()
         loss = (-delta.where(delta < 0, 0.0)).rolling(window=window, min_periods=1).mean()
         rs = gain / loss.replace(0, 1e-9)
-        df['RSI'] = 100 - (100 / (1 + rs))
-        df['RSI'] = df['RSI'].fillna(50)
+        df['Rsi'] = 100 - (100 / (1 + rs))
+        df['Rsi'] = df['Rsi'].fillna(50)
       else:
-        df['RSI'] = 50.0
+        df['Rsi'] = 50.0
   #--------------------------------------------------------------------------------------------------------------------------------
   def addMovingAverages(self, windows: List[int] = [5, 10, 20, 50, 100, 200]):
     """Calculate the Moving averages to df.
