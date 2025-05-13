@@ -146,8 +146,8 @@ class ChartingUtils:
                                         secondary_y=True))
   #--------------------------------------------------------------------------------------------------------------------------------
   def addMacdToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]], currentPanelId: int) -> bool:
-    if 'MACD' in plotDf.columns and not plotDf['MACD'].isnull().all():
-      addPlots.append(mpf.make_addplot(plotDf['MACD'], panel=currentPanelId, color='dodgerblue', ylabel='MACD', width=0.8))
+    if 'Macd' in plotDf.columns and not plotDf['Macd'].isnull().all():
+      addPlots.append(mpf.make_addplot(plotDf['Macd'], panel=currentPanelId, color='dodgerblue', ylabel='MACD', width=0.8))
       if 'MacdSignal' in plotDf.columns and not plotDf['MacdSignal'].isnull().all():
         addPlots.append(mpf.make_addplot(plotDf['MacdSignal'], panel=currentPanelId, color='orangered', width=0.8))
       if 'MacdHist' in plotDf.columns and not plotDf['MacdHist'].isnull().all():
@@ -172,10 +172,12 @@ class ChartingUtils:
     return False
   #--------------------------------------------------------------------------------------------------------------------------------
   def addStochasticToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]], currentPanelId: int) -> bool:
-    if '%K' in plotDf.columns and not plotDf['%K'].isnull().all():
-      addPlots.append(mpf.make_addplot(plotDf['%K'], panel=currentPanelId, color='darkturquoise', ylabel='Stoch', ylim=(0,100), width=0.8))
-      if '%D' in plotDf.columns and not plotDf['%D'].isnull().all():
-        addPlots.append(mpf.make_addplot(plotDf['%D'], panel=currentPanelId, color='deeppink', width=0.8))
+    if 'stochK' in plotDf.columns and not plotDf['stochK'].isnull().all():
+      addPlots.append(mpf.make_addplot(plotDf['stochK']    , panel=currentPanelId, color='lightgreen', ylabel='Stoch', ylim=(0,100), width=0.8))
+      addPlots.append(mpf.make_addplot(plotDf['stochKSlow'], panel=currentPanelId, color='green', ylabel='Stoch', ylim=(0,100), width=0.8))
+      if 'stochD' in plotDf.columns and not plotDf['stochD'].isnull().all():
+        addPlots.append(mpf.make_addplot(plotDf['stochD']    , panel=currentPanelId, color='orangered', width=0.8))
+        addPlots.append(mpf.make_addplot(plotDf['stochDSlow'], panel=currentPanelId, color='red', width=0.8))
       addPlots.append(mpf.make_addplot(pd.Series(70, index=plotDf.index), panel=currentPanelId, color='red', linestyle='dashed', width=0.7))
       addPlots.append(mpf.make_addplot(pd.Series(30, index=plotDf.index), panel=currentPanelId, color='green', linestyle='dashed', width=0.7))
       return True
