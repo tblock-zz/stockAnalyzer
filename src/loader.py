@@ -184,3 +184,60 @@ def saveStockListToFile(tickers, filename: str = "listStocks"):
     print(f"Stocklist saved to '{filePath}'.")
   except Exception as e:
     print(f"Error saving stocklist to '{filePath}': {e}")
+#--------------------------------------------------------------------------------------------------------------------------------
+def saveDataIfNeeded(dataToSave: pd.DataFrame, originalLocalData: Optional[pd.DataFrame],
+                    parquetFilePath: str, tickerSymbol: str, interval: str) -> None:
+  if dataToSave.empty:
+    print(f"Final DataFrame for {tickerSymbol} ({interval}) is empty. Nothing to save to parquet.")
+    return
+
+  if not isinstance(dataToSave.index, pd.DatetimeIndex):
+    try:
+      dataToSave.index = pd.to_datetime(dataToSave.index)
+    except Exception as e:
+      print(f"Error converting dataToSave index to DatetimeIndex for {tickerSymbol} ({interval}): {e}. Skipping save.")
+      return
+  if dataToSave.index.tz is not None:
+    dataToSave.index = dataToSave.index.tz_convert(None)
+
+  shouldSave = False
+  reasonForSave: List[str] = []
+
+  if originalLocalData is None or originalLocalData.empty:
+    shouldSave = True
+    reasonForSave.append("No valid original local data existed.")
+  else:
+    comparableOriginalLocalData = originalLocalData.copy()
+    if not isinstance(comparableOriginalLocalData.index, pd.DatetimeIndex):
+      try:
+        comparableOriginalLocalData.index = pd.to_datetime(comparableOriginalLocalData.index)
+      except Exception:
+        shouldSave = True
+        reasonForSave.append("Original local data had a non-convertible index.")
+    
+    if not shouldSave and comparableOriginalLocalData.index.tz is not None:
+      comparableOriginalLocalData.index = comparableOriginalLocalData.index.tz_convert(None)
+
+    if not shouldSave:
+      if dataToSave.index.min() < comparableOriginalLocalData.index.min():
+        shouldSave = True
+        reasonForSave.append(f"Data now starts earlier ({dataToSave.index.min()} vs {comparableOriginalLocalData.index.min()}).")
+
+      if dataToSave.index.max() > comparableOriginalLocalData.index.max():
+        shouldSave = True
+        reasonForSave.append(f"Data now ends later ({dataToSave.index.max()} vs {comparableOriginalLocalData.index.max()}).")
+
+      if not shouldSave and not dataToSave.equals(comparableOriginalLocalData):
+        shouldSave = True
+        reasonForSave.append("Content has changed.")
+
+  if shouldSave:
+    finalReason = " ".join(reasonForSave)
+    print(f"Saving data for {tickerSymbol} ({interval}). Reason(s): {finalReason}")
+    try:
+      dataToSave.to_parquet(parquetFilePath, engine='pyarrow', index=True)
+      print(f"Saved/Updated data for {tickerSymbol} ({interval}) to {parquetFilePath}")
+    except Exception as e:
+      print(f"Error saving data for {tickerSymbol} ({interval}) to parquet {parquetFilePath}: {e}")
+  else:
+    print(f"Data for {tickerSymbol} ({interval}) is effectively unchanged compared to local data. No save needed.")

@@ -1,6 +1,5 @@
-
 import tkinter as tk
-from tkinter import ttk, messagebox, Listbox, Scrollbar, END, simpledialog
+from tkinter import ttk, messagebox, Listbox, Scrollbar, END
 import pandas as pd
 import datetime
 import mplfinance as mpf
@@ -8,10 +7,10 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 import matplotlib.pyplot as plt
 import threading
 from typing import List, Dict, Any, Optional, Tuple
-import os
 
-import loader 
+import loader
 import indicators
+import infoDisplay as info
 #--------------------------------------------------------------------------------------------------------------------------------
 def calculateDateRanges(yearsToDisplay: int) -> Tuple[datetime.date, datetime.date, pd.Timestamp]:
   if not (1 <= yearsToDisplay <= 20): yearsToDisplay = 2
@@ -22,63 +21,6 @@ def calculateDateRanges(yearsToDisplay: int) -> Tuple[datetime.date, datetime.da
   displayStartDateTimestamp = pd.Timestamp(displayStartDate)
   return startDateForDataFetch, endDate, displayStartDateTimestamp
 #--------------------------------------------------------------------------------------------------------------------------------
-def saveDataIfNeeded(dataToSave: pd.DataFrame, originalLocalData: Optional[pd.DataFrame],
-                    parquetFilePath: str, tickerSymbol: str, interval: str) -> None:
-  if dataToSave.empty:
-    print(f"Final DataFrame for {tickerSymbol} ({interval}) is empty. Nothing to save to parquet.")
-    return
-
-  if not isinstance(dataToSave.index, pd.DatetimeIndex):
-    try:
-      dataToSave.index = pd.to_datetime(dataToSave.index)
-    except Exception as e:
-      print(f"Error converting dataToSave index to DatetimeIndex for {tickerSymbol} ({interval}): {e}. Skipping save.")
-      return
-  if dataToSave.index.tz is not None:
-    dataToSave.index = dataToSave.index.tz_convert(None)
-
-  shouldSave = False
-  reasonForSave = []
-
-  if originalLocalData is None or originalLocalData.empty:
-    shouldSave = True
-    reasonForSave.append("No valid original local data existed.")
-  else:
-    comparableOriginalLocalData = originalLocalData.copy()
-    if not isinstance(comparableOriginalLocalData.index, pd.DatetimeIndex):
-      try:
-        comparableOriginalLocalData.index = pd.to_datetime(comparableOriginalLocalData.index)
-      except Exception:
-        shouldSave = True
-        reasonForSave.append("Original local data had a non-convertible index.")
-    
-    if not shouldSave and comparableOriginalLocalData.index.tz is not None:
-      comparableOriginalLocalData.index = comparableOriginalLocalData.index.tz_convert(None)
-
-    if not shouldSave:
-      if dataToSave.index.min() < comparableOriginalLocalData.index.min():
-        shouldSave = True
-        reasonForSave.append(f"Data now starts earlier ({dataToSave.index.min()} vs {comparableOriginalLocalData.index.min()}).")
-
-      if dataToSave.index.max() > comparableOriginalLocalData.index.max():
-        shouldSave = True
-        reasonForSave.append(f"Data now ends later ({dataToSave.index.max()} vs {comparableOriginalLocalData.index.max()}).")
-
-      if not shouldSave and not dataToSave.equals(comparableOriginalLocalData):
-        shouldSave = True
-        reasonForSave.append("Content has changed.")
-
-  if shouldSave:
-    finalReason = " ".join(reasonForSave)
-    print(f"Saving data for {tickerSymbol} ({interval}). Reason(s): {finalReason}")
-    try:
-      dataToSave.to_parquet(parquetFilePath, engine='pyarrow', index=True)
-      print(f"Saved/Updated data for {tickerSymbol} ({interval}) to {parquetFilePath}")
-    except Exception as e:
-      print(f"Error saving data for {tickerSymbol} ({interval}) to parquet {parquetFilePath}: {e}")
-  else:
-    print(f"Data for {tickerSymbol} ({interval}) is effectively unchanged compared to local data. No save needed.")
-#--------------------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------------------
 class ChartingUtils:
   #--------------------------------------------------------------------------------------------------------------------------------
@@ -87,7 +29,7 @@ class ChartingUtils:
     ax.text(0.5, 0.5, message, ha='center', va='center', fontsize=10, wrap=True)
     try:
       fig.tight_layout(pad=0.5)
-    except Exception: # NOSONAR
+    except Exception: 
       pass
     return fig
   #--------------------------------------------------------------------------------------------------------------------------------
@@ -312,7 +254,7 @@ class ChartingUtils:
                   update_width_config=dict(candle_linewidth=0.7, candle_width=0.6) )
     except Exception as e:
       print(f"Error during mplfinance.plot for {tickerSymbol} ({chartTimeframe}): {e}")
-      import traceback; 
+      import traceback
       traceback.print_exc()
       return self.createErrorFigure(f"Plotting error for {tickerSymbol} ({chartTimeframe}):\n{str(e)[:100]}")
 
@@ -327,7 +269,7 @@ class ChartingUtils:
     self.applyAxisLabelAdjustments(returnedAxesObject, tickerSymbol, chartTimeframe, addPlots)
     return fig
 #--------------------------------------------------------------------------------------------------------------------------------
-# --- Main Application ---
+#--------------------------------------------------------------------------------------------------------------------------------
 class StockAnalyzerApp:
   #--------------------------------------------------------------------------------------------------------------------------------
   def __init__(self, root: tk.Tk):
@@ -339,9 +281,10 @@ class StockAnalyzerApp:
     self.dataProvider = loader.getProvider()
     self.indicatorCalc = indicators.Calculator()
     self.chartUtils = ChartingUtils()
+    self.companyInfoDisplay: Optional[info.CompanyInfoDisplay] = None
 
     self.currentTicker = tk.StringVar(value='AAPL')
-    self.stockList = []
+    self.stockList: List[str] = []
     self.stockList = loader.loadStockListFromFile()
 
     self.dailyChartCanvas: Optional[FigureCanvasTkAgg] = None
@@ -360,7 +303,6 @@ class StockAnalyzerApp:
   #--------------------------------------------------------------------------------------------------------------------------------
   def setupWatchlistPane(self, parentPane: ttk.PanedWindow):
     widthWatchlist = 1
-    # watchlist frame contains ticker frame and button add frame
     row = 0
     watchlistFrame = ttk.LabelFrame(parentPane, text="Watchlist", padding=2)
     watchlistFrame.columnconfigure(0, weight=1)
@@ -394,10 +336,6 @@ class StockAnalyzerApp:
     listScrollbar.grid(row=0, column=1, sticky="ns")
     self.tickerListBox.config(yscrollcommand=listScrollbar.set)
 
-    #row += 1
-    #findButton = ttk.Button(watchlistFrame, text="Find", command=self.handleFind)
-    #findButton.grid(row=row, column=0, sticky="ew", pady=(5,0))
-
     row += 1
     timePeriodFrame = ttk.Frame(watchlistFrame, padding=(0, 5, 0, 0))
     timePeriodFrame.grid(row=row, column=0, sticky="ew", pady=(10,0))
@@ -405,11 +343,12 @@ class StockAnalyzerApp:
     ttk.Label(timePeriodFrame, text="Years:").grid(row=0, column=0, sticky="w", padx=(0,2))
     self.yearsEntry = ttk.Entry(timePeriodFrame, textvariable=self.displayYearsVar, width=4)
     self.yearsEntry.grid(row=0, column=1, sticky="ew", padx=(0,5))
-    updatePeriodButton = ttk.Button(timePeriodFrame, text="update", command=self.updateDisplayPeriodAndReload)
+    self.yearsEntry.bind("<Return>", lambda event: self.updateDisplayPeriodAndReload())
+    updatePeriodButton = ttk.Button(timePeriodFrame, text="Update", command=self.updateDisplayPeriodAndReload, width=7)
     updatePeriodButton.grid(row=0, column=2, sticky="e")
 
     parentPane.add(watchlistFrame, weight=widthWatchlist)
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def setupContentAreaPanes(self, parentPane: ttk.PanedWindow):
     contentArea = ttk.PanedWindow(parentPane, orient=tk.HORIZONTAL)
 
@@ -422,11 +361,8 @@ class StockAnalyzerApp:
     weeklyAndInfoFrame = ttk.PanedWindow(contentArea, orient=tk.VERTICAL)
     self.weeklyChartFrameContainer = ttk.LabelFrame(weeklyAndInfoFrame, text="Weekly Chart", padding=4)
     weeklyAndInfoFrame.add(self.weeklyChartFrameContainer, weight=1)
-
-    self.infoTextFrame = ttk.LabelFrame(weeklyAndInfoFrame, text="Company Information", padding=5)
-    self.infoText = tk.Text(self.infoTextFrame, wrap=tk.WORD, height=10, relief=tk.FLAT, font=("Segoe UI", 9))
-    self.infoText.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
-    weeklyAndInfoFrame.add(self.infoTextFrame, weight=1)
+    
+    self.companyInfoDisplay = info.CompanyInfoDisplay(weeklyAndInfoFrame)
 
     contentArea.add(weeklyAndInfoFrame, weight=widthWeeklyAndInfo)
     parentPane.add(contentArea, weight=widthDaily + widthWeeklyAndInfo)
@@ -437,7 +373,7 @@ class StockAnalyzerApp:
   #--------------------------------------------------------------------------------------------------------------------------------
   def updateChartTitles(self):
     years = self.displayYearsVar.get()
-    yearsText = f"({years} Year{'s' if years > 1 else ''})"
+    yearsText = f"({years} Year{'s' if years != 1 else ''})"
     if hasattr(self, 'dailyChartFrameContainer') and self.dailyChartFrameContainer.winfo_exists():
       self.dailyChartFrameContainer.config(text=f"Daily Chart {yearsText}")
     if hasattr(self, 'weeklyChartFrameContainer') and self.weeklyChartFrameContainer.winfo_exists():
@@ -445,7 +381,7 @@ class StockAnalyzerApp:
   #--------------------------------------------------------------------------------------------------------------------------------
   def setupUserInterface(self):
     self.rootPanedWindow = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
-    self.rootPanedWindow.pack(expand=True, fill=tk.BOTH)
+    self.rootPanedWindow.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
 
     self.setupWatchlistPane(self.rootPanedWindow)
     self.setupContentAreaPanes(self.rootPanedWindow)
@@ -470,8 +406,8 @@ class StockAnalyzerApp:
       ticker = self.tickerListBox.get(selectedIndices[0])
       self.loadStockData(ticker)
     else:
-      messagebox.showinfo("No selection", "Select a ticker from the watchlist.")
-  #--------------------------------------------------------------------------------------------------------------------------------
+      messagebox.showinfo("No selection", "Select a ticker from the watchlist to reload data with new period.")
+  #------------------------------------------------------------------------------------------------------------------------------
   def addTickerToList(self, event=None):
     newTicker = self.newTickerEntry.get().strip().upper()
     if not newTicker:
@@ -483,7 +419,7 @@ class StockAnalyzerApp:
       self.stockList.append(newTicker)
       self.stockList.sort()
       self.updateTickerListBox()
-      saveStockListToFile(self.stockList)
+      loader.saveStockListToFile(self.stockList)
       try:
         idx = self.stockList.index(newTicker)
         self.tickerListBox.selection_clear(0, END)
@@ -492,11 +428,7 @@ class StockAnalyzerApp:
         self.handleTickerSelect(None)
       except ValueError: pass
     self.newTickerEntry.delete(0, END)
-  #------------------------------------------------------------------------------
-  def printInCompanyInformation(self,strLine:str):
-    self.infoText.insert(tk.END, strLine, ('header2',))
-    self.infoText.tag_config('header2', font=('Segoe UI', 10, 'bold'), spacing1=5, spacing3=3)
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def removeSelectedTicker(self):
     selectedIndices = self.tickerListBox.curselection()
     if not selectedIndices:
@@ -504,18 +436,20 @@ class StockAnalyzerApp:
       return
 
     selectedTicker = self.tickerListBox.get(selectedIndices[0])
+    confirm = messagebox.askyesno("Confirm Removal", f"Are you sure you want to remove {selectedTicker} from the watchlist?")
+    if not confirm:
+        return
 
     if selectedTicker in self.stockList:
       self.stockList.remove(selectedTicker)
       self.updateTickerListBox()
-      saveStockListToFile(self.stockList)
+      loader.saveStockListToFile(self.stockList)
       if self.stockList:
         self.tickerListBox.selection_set(0)
         self.handleTickerSelect(None)
       else:
         self.clearPreviousCharts()
-        self.infoText.delete('1.0', tk.END)
-        self.infoText.insert(tk.END, "Watchlist is empty.")
+        self.companyInfoDisplay.showMessage("Watchlist is empty. Add tickers to begin.")
         self.updateChartTitles()
         self.statusBar.config(text="Ticker removed. Watchlist is empty.")
   #--------------------------------------------------------------------------------------------------------------------------------
@@ -535,30 +469,23 @@ class StockAnalyzerApp:
         self.statusBar.config(text=f"Displaying data for {ticker}")
   #--------------------------------------------------------------------------------------------------------------------------------
   def clearPreviousCharts(self):
-    if self.dailyChartCanvas:
-      self.dailyChartCanvas.get_tk_widget().destroy()
-      self.dailyChartCanvas = None
-    if self.dailyToolbar:
-      self.dailyToolbar.destroy()
-      self.dailyToolbar = None
-    if self.dailyFig:
-      plt.close(self.dailyFig)
-      self.dailyFig = None
+    def destroyCanvasAndFig(canvas, fig, toolbar):
+        if canvas:
+            canvas.get_tk_widget().destroy()
+        if toolbar:
+            toolbar.destroy()
+        if fig:
+            plt.close(fig)
+        return None, None, None
+
+    self.dailyFig, self.dailyChartCanvas, self.dailyToolbar = destroyCanvasAndFig(self.dailyChartCanvas, self.dailyFig, self.dailyToolbar)
     for widget in self.dailyChartFrameContainer.winfo_children():
       widget.destroy()
 
-    if self.weeklyChartCanvas:
-      self.weeklyChartCanvas.get_tk_widget().destroy()
-      self.weeklyChartCanvas = None
-    if self.weeklyToolbar:
-      self.weeklyToolbar.destroy()
-      self.weeklyToolbar = None
-    if self.weeklyFig:
-      plt.close(self.weeklyFig)
-      self.weeklyFig = None
+    self.weeklyFig, self.weeklyChartCanvas, self.weeklyToolbar = destroyCanvasAndFig(self.weeklyChartCanvas, self.weeklyFig, self.weeklyToolbar)
     for widget in self.weeklyChartFrameContainer.winfo_children():
       widget.destroy()
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def displayError(self, message: str, ticker: str ="N/A"):
     self.clearPreviousCharts()
 
@@ -568,8 +495,7 @@ class StockAnalyzerApp:
     errorFigWeekly = self.chartUtils.createErrorFigure(f"Weekly Chart Error for {ticker}:\n{message}")
     self.weeklyFig, self.weeklyChartCanvas, self.weeklyToolbar = self.displaySingleChart(errorFigWeekly, self.weeklyChartFrameContainer, "Weekly", ticker)
 
-    self.infoText.delete('1.0', tk.END)
-    self.infoText.insert(tk.END, f"Error loading data for {ticker}:\n{message}")
+    self.companyInfoDisplay.showError(message, ticker)
     self.statusBar.config(text=f"Error loading data for {ticker}")
   #--------------------------------------------------------------------------------------------------------------------------------
   def displaySingleChart(self, fig: Optional[plt.Figure], containerFrame: ttk.LabelFrame, chartType: str, ticker: str) -> Tuple[Optional[plt.Figure], Optional[FigureCanvasTkAgg], Optional[NavigationToolbar2Tk]]:
@@ -589,97 +515,6 @@ class StockAnalyzerApp:
 
     return fig, canvas, toolbar
   #--------------------------------------------------------------------------------------------------------------------------------
-  def formatAndDisplayInfoValue(self, label: str, value: Any):
-    textToInsert = f"{label}: "
-    if isinstance(value, (int, float)):
-      if abs(value) >= 1_000_000_000:
-        textToInsert += f"{value / 1_000_000_000:.2f}B"
-      elif abs(value) >= 1_000_000:
-        textToInsert += f"{value / 1_000_000:.2f}M"
-      elif abs(value) >= 1_000:
-        textToInsert += f"{value / 1_000:.2f}K"
-      else:
-        textToInsert += f"{value:.2f}" if isinstance(value, float) else f"{value:,}"
-    elif isinstance(value, str) and value.startswith("http"):
-      textToInsert += value
-    elif value is None or str(value).lower() == 'nan' or str(value).lower() == 'none':
-      textToInsert += "N/A"
-    else:
-      textToInsert += str(value)
-
-    self.infoText.insert(tk.END, textToInsert + "\n")
-    try:
-      if label == "Website" and value and isinstance(value, str) and value.startswith("http"):
-        currentPos = self.infoText.index(f"end-2l linestart + {len(label) + 2}c")
-        endPos = self.infoText.index(f"end-2l lineend")
-        self.infoText.tag_add(f"link_{value}", currentPos, endPos)
-        self.infoText.tag_config(f"link_{value}", foreground="blue", underline=True)
-    except Exception:
-      pass
-  #--------------------------------------------------------------------------------------------------------------------------------
-  def displayCompanyInfoDetails(self, companyInfo: Dict[str, Any], ticker: str):
-    self.infoText.delete('1.0', tk.END)
-    if not companyInfo or companyInfo.get("error"):
-      errorMsg = companyInfo.get("error", f"No company information available for {ticker}.")
-      self.infoText.insert(tk.END, errorMsg)
-      return
-
-    self.infoText.insert(tk.END, f"--- {companyInfo.get('longName', ticker)} ({ticker}) ---\n", ('header',))
-    self.infoText.tag_config('header', font=('Segoe UI', 11, 'bold'), spacing1=5, spacing3=5)
-
-    infoMap = {
-      "Sector": "sector", 
-      "Industry": "industry", 
-      "Website": "website",
-      "Currency": "currency", 
-      "Market Cap": "marketCap",
-      "Shares Outstanding": "sharesOutstanding", 
-      "P/E Ratio": "trailingPE",
-      "Forward P/E": "forwardPE", 
-      "EPS (TTM)": "trailingEps",
-      "Forward EPS": "forwardEps", 
-      "Beta": "beta", 
-      "Dividend Rate": "dividendRate",
-      "Dividend Yield": "dividendYield",
-      "Divident payout ration": "payoutRatio",
-      "Ex-Dividend Date": "exDividendDate",
-      "52 Week High": "fiftyTwoWeekHigh", 
-      "52 Week Low": "fiftyTwoWeekLow",
-      "Avg. Volume": "averageVolume", 
-      "Current Price": "currentPrice",
-      "Regular Market Price": 
-      "regularMarketPrice", "Open": "open",
-      "Previous Close": "previousClose", 
-      "Day High": "dayHigh", 
-      "Day Low": "dayLow",
-      'Earnings date': 'earningsTimestampStart',
-      'Recommendation': 'recommendationKey',
-    }
-
-    #print(f"Company info keys: {list(companyInfo.keys())}")
-    for displayLabel, infoKey in infoMap.items():
-      value = companyInfo.get(infoKey)
-      if value is not None:
-        if infoKey == "exDividendDate" and isinstance(value, (int, float)):
-          try: value = datetime.datetime.fromtimestamp(value).strftime('%Y-%m-%d')
-          except: pass
-        elif infoKey == "earningsTimestampStart" and isinstance(value, list) and len(value) > 0:
-          try:
-            tsValue = min(v for v in value if isinstance(v, (int, float)))
-            value = datetime.datetime.fromtimestamp(tsValue).strftime('%Y-%m-%d')
-          except: pass
-        elif infoKey == "earningsTimestampStart" and isinstance(value, (int, float)):
-          try: value = datetime.datetime.fromtimestamp(value).strftime('%Y-%m-%d')
-          except: pass
-
-        self.formatAndDisplayInfoValue(displayLabel, value)
-
-    summary = companyInfo.get('longBusinessSummary')
-    if summary:
-      self.infoText.insert(tk.END, "\n--- Business Summary ---\n", ('header2',))
-      self.infoText.tag_config('header2', font=('Segoe UI', 10, 'bold'), spacing1=5, spacing3=3)
-      self.infoText.insert(tk.END, summary)
-  #--------------------------------------------------------------------------------------------------------------------------------
   def displayProcessedData(self, displayPayload: Dict[str, Any]):
     self.clearPreviousCharts()
 
@@ -688,12 +523,11 @@ class StockAnalyzerApp:
     companyInfoValue = displayPayload.get('company_info')
     ticker = displayPayload.get('ticker', "N/A")
     error = displayPayload.get('error')
-
     if error:
       self.displayError(error, ticker)
       return
-
-    dailyFigsize = (9, 5.5)
+    
+    dailyFigsize  = (9, 5.5)
     weeklyFigsize = (6, 4.5)
 
     if dailyData is not None and not dailyData.empty:
@@ -717,14 +551,12 @@ class StockAnalyzerApp:
       self.weeklyFig, self.weeklyChartCanvas, self.weeklyToolbar = self.displaySingleChart(errFigW, self.weeklyChartFrameContainer, "Weekly", ticker)
 
     if companyInfoValue:
-      self.displayCompanyInfoDetails(companyInfoValue, ticker)
+      self.companyInfoDisplay.displayDetails(companyInfoValue, ticker)
     else:
-      self.infoText.delete('1.0', tk.END)
-      self.infoText.insert(tk.END, f"No company information found for {ticker}.")
-
+      self.companyInfoDisplay.showMessage(f"No company information found for {ticker}.")
     self.statusBar.config(text=f"Displaying data for {ticker}")
     self.updateChartTitles()
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def handleDataForCharting(self, dataFromThread: Dict[str, Any]):
     if dataFromThread:
       displayPayload = {
@@ -740,7 +572,7 @@ class StockAnalyzerApp:
         print(f"Critical error during displayProcessedData for {dataFromThread.get('ticker')}: {eDisp}")
         import traceback
         traceback.print_exc()
-        self.displayError(f"Failed to display charts/info: {eDisp}", dataFromThread.get('ticker'))
+        self.displayError(f"Failed to display charts/info: {eDisp}", dataFromThread.get('ticker', 'N/A'))
     else:
       print("Received no data in handleDataForCharting.")
       self.displayError("Failed to retrieve data (empty response from background thread).")
@@ -755,9 +587,18 @@ class StockAnalyzerApp:
       return None
 
     df = dataFrame.copy()
-    if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+    if not isinstance(df.index, pd.DatetimeIndex):
+        try:
+            df.index = pd.to_datetime(df.index)
+        except Exception as e:
+            print(f"Error converting index to DatetimeIndex for {tickerSymbol} ({interval}) before indicators: {e}")
+            return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
+            
+    if df.index.tz is not None:
       df.index = df.index.tz_convert(None)
+    
     df = self.indicatorCalc.setDataframe(df).calculate().get()
+    
     displayStartDateTsNaive = displayStartDateTs.tz_localize(None) if df.index.tz is None and displayStartDateTs.tz is not None else displayStartDateTs
     
     df.sort_index(inplace=True)
@@ -768,12 +609,12 @@ class StockAnalyzerApp:
         return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
       return filteredDf
     except TypeError as te:
-      print(f"TypeError during date filtering for {tickerSymbol} ({interval}): {te}")
+      print(f"TypeError during date filtering for {tickerSymbol} ({interval}): {te}. Index type: {type(df.index)}, Date type: {type(displayStartDateTsNaive)}")
       return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
     except Exception as eFilter:
       print(f"Unexpected error during date filtering for {tickerSymbol} ({interval}): {eFilter}")
       return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def fetchAndProcessIntervalData(self, tickerSymbol: str, startDateParam: datetime.date, endDateParam: datetime.date, displayStartDateTs: pd.Timestamp, interval: str) -> Optional[pd.DataFrame]:
     parquetFilePath = loader.constructParquetFilePath(tickerSymbol, interval)
     originalLocalDf = loader.loadLocalData(parquetFilePath, tickerSymbol, interval)
@@ -794,10 +635,10 @@ class StockAnalyzerApp:
     elif finalDfToProcessAndSave is None:
       finalDfToProcessAndSave = pd.DataFrame()
 
-    saveDataIfNeeded(finalDfToProcessAndSave, originalLocalDf, parquetFilePath, tickerSymbol, interval)
+    loader.saveDataIfNeeded(finalDfToProcessAndSave, originalLocalDf, parquetFilePath, tickerSymbol, interval)
 
     return self.applyIndicatorsAndFilterData(finalDfToProcessAndSave, displayStartDateTs, tickerSymbol, interval)
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def processDataInBackground(self, tickerSymbol: str, yearsToDisplay: int) -> Dict[str, Any]:
     try:
       startDate, endDate, displayStartTs = calculateDateRanges(yearsToDisplay)
@@ -812,19 +653,20 @@ class StockAnalyzerApp:
       allDataFailed = True
       if dailyDf is not None and not dailyDf.empty: allDataFailed = False
       if weeklyDf is not None and not weeklyDf.empty: allDataFailed = False
-      if isinstance(companyInfoValue, dict) and not companyInfoValue.get("error"): allDataFailed = False
-
-      payload = {
+      
+      payload: Dict[str, Any] = {
         'daily_data': dailyDf, 'weekly_data': weeklyDf,
         'company_info': companyInfoValue, 'ticker': tickerSymbol, 'error': None
       }
 
       if allDataFailed:
-        mainErrorMsg = "Failed to retrieve any data"
-        if isinstance(companyInfoValue, dict) and companyInfoValue.get("error"):
-          mainErrorMsg = companyInfoValue.get("error")
+        mainErrorMsg = "Failed to retrieve any chart data"
+        if (dailyDf is None or dailyDf.empty) and \
+           (weeklyDf is None or weeklyDf.empty) and \
+           isinstance(companyInfoValue, dict) and companyInfoValue.get("error"):
+            mainErrorMsg = companyInfoValue.get("error")
         elif dailyDf is None and weeklyDf is None :
-          mainErrorMsg = f"Failed to fetch historical data for {tickerSymbol}."
+          mainErrorMsg = f"Failed to fetch or process historical data for {tickerSymbol}."
         payload['error'] = mainErrorMsg + f" for {tickerSymbol}."
         print(f"Error in processDataInBackground for {tickerSymbol}: {payload['error']}")
       return payload
@@ -839,11 +681,10 @@ class StockAnalyzerApp:
         'ticker': tickerSymbol,
         'error': f"A critical error occurred while processing data for {tickerSymbol}: {e}"
       }
-  #--------------------------------------------------------------------------------------------------------------------------------
+  #------------------------------------------------------------------------------------------------------------------------------
   def updateUiForLoading(self, ticker: str):
     self.clearPreviousCharts()
-    self.infoText.delete('1.0', tk.END)
-    self.infoText.insert(tk.END, f"Loading data for {ticker}...")
+    self.companyInfoDisplay.showLoadingMessage(ticker)
     self.statusBar.config(text=f"Loading {ticker}...")
     self.root.config(cursor="watch")
 
