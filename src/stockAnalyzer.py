@@ -465,21 +465,7 @@ class StockAnalyzerApp:
       return pd.DataFrame(columns=df.columns, index=pd.to_datetime([]))
   #------------------------------------------------------------------------------------------------------------------------------
   def fetchAndProcessIntervalData(self, ticker: str, startDt: datetime.date, endDt: datetime.date, dispStartTs: pd.Timestamp, interval: str) -> Optional[pd.DataFrame]:
-    pqPath = loader.constructParquetFilePath(ticker, interval)
-    localDf = loader.loadLocalData(pqPath, ticker, interval)
-    fetchStart, baseMergeDf = loader.determineFetchParameters(localDf, startDt, endDt, interval, ticker)
-    finalDf = loader.fetchAndMergeData(ticker, fetchStart, endDt, interval, baseMergeDf)
-    if (finalDf is None or finalDf.empty) and (startDt <= endDt): 
-      print(f"Fallback full fetch {interval}: {ticker} from {startDt} to {endDt}.")
-      fbData = self.dataProvider.getHistoricalData(ticker, startDt, endDt, interval=interval)
-      if fbData is not None and not fbData.empty: 
-        finalDf = fbData
-        print(f"Full fetch OK: {ticker} ({interval}).")
-      else:
-        finalDf = pd.DataFrame() if finalDf is None else finalDf
-        print(f"Full fetch empty/None: {ticker} ({interval}).")
-    elif finalDf is None: finalDf = pd.DataFrame()
-    loader.saveDataIfNeeded(finalDf, localDf, pqPath, ticker, interval)
+    finalDf = loader.fetchAndProcessIntervalData(ticker, startDt, endDt, interval)
     return self.applyIndicatorsAndFilterData(finalDf, dispStartTs, ticker, interval)
   #------------------------------------------------------------------------------------------------------------------------------
   def processDataInBackground(self, ticker: str, years: int) -> Dict[str, Any]:

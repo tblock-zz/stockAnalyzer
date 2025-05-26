@@ -10,7 +10,16 @@ from typing import List, Dict, Any, Optional, Tuple
 from curl_cffi import requests
 global session
 session = None
+#------------------------------------------------------------------------------
+import globalsSa
+try:
+  import IbkrTws as ib
+  globalsSa.HAS_IBKR = True
+except:
+  globalsSa.HAS_IBKR = False
 #--------------------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------------------
+
 class MarketDataProvider:
   #--------------------------------------------------------------------------------------------------------------------------------
   def getHistoricalData(self, tickerSymbol: str, startDate: datetime.date, endDate: datetime.date, interval: str ='1d') -> pd.DataFrame:
@@ -26,15 +35,15 @@ class YFinanceProvider(MarketDataProvider):
     if session is None:
       session = requests.Session(impersonate="chrome")
     ticker = yf.Ticker(tickerSymbol, session=session)
-    data = ticker.history(start=startDate, end=endDate, interval=interval, auto_adjust=True, prepost=False)
-    if data.empty:
+    df = ticker.history(start=startDate, end=endDate, interval=interval, auto_adjust=True, prepost=False)
+    if df.empty:
       return pd.DataFrame()
-    data.rename(columns={col: col.capitalize() for col in data.columns if col in ['open', 'high', 'low', 'close', 'volume']}, inplace=True)
+    df.rename(columns={col: col.capitalize() for col in df.columns if col in ['open', 'high', 'low', 'close', 'volume']}, inplace=True)
 
-    if isinstance(data.index, pd.DatetimeIndex):
-      if data.index.tz is not None:
-        data.index = data.index.tz_convert(None)
-    return data
+    if isinstance(df.index, pd.DatetimeIndex):
+      if df.index.tz is not None:
+        df.index = df.index.tz_convert(None)
+    return df
   #--------------------------------------------------------------------------------------------------------------------------------
   def getCompanyInfo(self, tickerSymbol: str) -> Dict[str, Any]:
     ticker = yf.Ticker(tickerSymbol)
@@ -51,108 +60,105 @@ class YFinanceProvider(MarketDataProvider):
       return {"error": f"Could not retrieve company info for {tickerSymbol}: {str(e)}"}
 #--------------------------------------------------------------------------------------------------------------------------------
 class InteractiveBrokersProvider(MarketDataProvider):
+  def __init__(self):
+    try:
+      if not ib.isOpen():
+        ib.open()
+    except Exception as e:
+      raise Exception("Interactive Brokers API is not enabled. Please check your configuration.")
   #--------------------------------------------------------------------------------------------------------------------------------
   def getHistoricalData(self, tickerSymbol: str, startDate: datetime.date, endDate: datetime.date, interval: str ='1d') -> pd.DataFrame:
-    raise NotImplementedError("Interactive Brokers API not implemented yet.")
+    if ib.isOpen():
+      ib.Interval.set(interval)
+      try:
+        df = ib.get(tickerSymbol)
+      except Exception:
+        raise Exception("No data returned from Interactive Brokers API.")
+    if df.empty:
+      return pd.DataFrame()
+    df.rename(columns={col: col.capitalize() for col in df.columns if col in ['open', 'high', 'low', 'close', 'volume']}, inplace=True)
+    df.drop_duplicates().reset_index(drop=True) 
+    if isinstance(df.index, pd.DatetimeIndex):
+      if df.index.tz is not None:
+        df.index = df.index.tz_convert(None)
+    return df
   #--------------------------------------------------------------------------------------------------------------------------------
   def getCompanyInfo(self, tickerSymbol: str) -> Dict[str, Any]:
-    raise NotImplementedError("Interactive Brokers API not implemented yet.")
+    #return ib.getFundamentalData(tickerSymbol)
+    ticker = yf.Ticker(tickerSymbol)
+    try:
+      info = ticker.info
+      if not info or (info.get('regularMarketPrice') is None and \
+                      info.get('previousClose') is None and \
+                      not info.get('longName') and \
+                      info.get('currency') is None and
+                      not info.get('marketCap')):
+        return {"error": f"No substantial company information found for {tickerSymbol}."}
+      return info
+    except Exception as e:
+      return {"error": f"Could not retrieve company info for {tickerSymbol}: {str(e)}"}
 #--------------------------------------------------------------------------------------------------------------------------------
 def getProvider() -> MarketDataProvider:
   """Returns the market data provider based on the configuration."""
   # Check if Interactive Brokers is available
-  if False:  # Placeholder for actual condition to check if IBKR is available
-    return InteractiveBrokersProvider()
-  else:
-    return YFinanceProvider()
-#--------------------------------------------------------------------------------------------------------------------------------
-def fetchAndMergeData(tickerSymbol: str, fetchStartDate: Optional[datetime.date], endDateParam: datetime.date,
-                      interval: str, baseDfForMerge: pd.DataFrame) -> pd.DataFrame:
-  currentData = baseDfForMerge.copy()
-  if fetchStartDate and fetchStartDate <= endDateParam:
-    print(f"Fetching {interval} data for {tickerSymbol} from {fetchStartDate} to {endDateParam}")
-    newData = getProvider().getHistoricalData(tickerSymbol, fetchStartDate, endDateParam, interval=interval)
-    if not newData.empty:
-      print(f"Fetched {len(newData)} new rows for {tickerSymbol} ({interval}).")
-      mergedDf = pd.concat([baseDfForMerge, newData])
-      mergedDf.sort_index(inplace=True)
-      currentData = mergedDf[~mergedDf.index.duplicated(keep='last')]
-      print(f"Data for {tickerSymbol} ({interval}) was updated/merged.")
-    else:
-      print(f"No new data fetched from yfinance for {tickerSymbol} ({interval}) (tried from {fetchStartDate}).")
-  elif not baseDfForMerge.empty:
-    print(f"No fetch required for {tickerSymbol} ({interval}). Using existing local data provided as baseDfForMerge.")
-  return currentData
-#--------------------------------------------------------------------------------------------------------------------------------
-def constructParquetFilePath(tickerSymbol: str, interval: str, dataDirName: str = "data") -> str:
-  intervalSuffix = interval.replace('k','').replace('m','min')
-  scriptDir = os.path.dirname(os.path.abspath(__file__))
-  dataDirPath = os.path.join(scriptDir, dataDirName)
-  os.makedirs(dataDirPath, exist_ok=True)
-  return os.path.join(dataDirPath, f"{tickerSymbol}_{intervalSuffix}.parquet")
-#--------------------------------------------------------------------------------------------------------------------------------
-def loadLocalData(parquetFilePath: str, tickerSymbol: str, interval: str) -> Optional[pd.DataFrame]:
-  if os.path.exists(parquetFilePath):
+  if globalsSa.HAS_IBKR:
     try:
-      print(f"Attempting to load {interval} data for {tickerSymbol} from {parquetFilePath}")
-      localDfCandidate = pd.read_parquet(parquetFilePath)
-      if not localDfCandidate.empty and isinstance(localDfCandidate.index, pd.DatetimeIndex):
-        if localDfCandidate.index.tz is not None:
-          localDfCandidate.index = localDfCandidate.index.tz_convert(None)
-        print(f"Successfully loaded {interval} data for {tickerSymbol} from local parquet.")
-        return localDfCandidate
-      else:
-        print(f"Local parquet file for {tickerSymbol} ({interval}) was empty or had invalid index.")
+      provider = InteractiveBrokersProvider()
+      return provider
     except Exception as e:
-      print(f"Error reading parquet file {parquetFilePath} for {tickerSymbol} ({interval}): {e}.")
-  return None
-#--------------------------------------------------------------------------------------------------------------------------------
-def determineFetchParameters(localData: Optional[pd.DataFrame],
-                              startDateParam: datetime.date, endDateParam: datetime.date, interval: str,
-                              tickerSymbol: str) -> Tuple[Optional[datetime.date], pd.DataFrame]:
-  fetchStartDate = None
-  baseDfForMerge = pd.DataFrame()
-
-  if localData is not None and not localData.empty:
-    baseDfForMerge = localData.copy()
-    firstTimestampInLocal = localData.index.min()
-    lastTimestampInLocal = localData.index.max()
-
-    if firstTimestampInLocal.date() > startDateParam:
-      print(f"Local data for {tickerSymbol} ({interval}) starts at {firstTimestampInLocal.date()}, "
-            f"but required start is {startDateParam}. Planning fetch from {startDateParam} to cover missing history.")
-      fetchStartDate = startDateParam
-
-    prospectiveFetchStartDateForNewerData = None
-    if interval == '1d':
-      if lastTimestampInLocal.date() == endDateParam:
-        print(f"Local daily data for {tickerSymbol} includes today ({endDateParam}). Re-fetching today for latest EOD.")
-        prospectiveFetchStartDateForNewerData = endDateParam
-        baseDfForMerge = localData[localData.index.date < endDateParam].copy()
-      elif lastTimestampInLocal.date() < endDateParam:
-        prospectiveFetchStartDateForNewerData = lastTimestampInLocal.date() + datetime.timedelta(days=1)
-        print(f"Local daily data for {tickerSymbol} ends at {lastTimestampInLocal.date()}. Fetching newer data from {prospectiveFetchStartDateForNewerData}.")
-    elif interval == '1wk':
-      todayIsoYear, todayIsoWeek, _ = datetime.date.today().isocalendar()
-      lastLocalIsoYear, lastLocalIsoWeek, _ = lastTimestampInLocal.date().isocalendar()
-      if lastLocalIsoYear < todayIsoYear or \
-        (lastLocalIsoYear == todayIsoYear and lastLocalIsoWeek < todayIsoWeek):
-        prospectiveFetchStartDateForNewerData = lastTimestampInLocal.date() + datetime.timedelta(days=1)
-        print(f"Local weekly data for {tickerSymbol} (week {lastLocalIsoWeek}/{lastLocalIsoYear}) is older. Fetching newer data from {prospectiveFetchStartDateForNewerData}.")
-      else:
-        print(f"Local weekly data for {tickerSymbol} (week {lastLocalIsoWeek}/{lastLocalIsoYear}) is current. No fetch for newer data needed.")
-
-    if prospectiveFetchStartDateForNewerData:
-      if fetchStartDate:
-        fetchStartDate = min(fetchStartDate, prospectiveFetchStartDateForNewerData)
-      else:
-        fetchStartDate = prospectiveFetchStartDateForNewerData
+      globalsSa.HAS_IBKR = False
+      return YFinanceProvider()
   else:
-    fetchStartDate = startDateParam
-    print(f"No valid local data for {tickerSymbol} ({interval}). Planning full fetch from {fetchStartDate} to {endDateParam}.")
-    baseDfForMerge = pd.DataFrame()
+    return YFinanceProvider()    
+#--------------------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------------------
+def determineFetchParameters(
+    localData: Optional[pd.DataFrame],
+    startDateParam: datetime.date, endDateParam: datetime.date, interval: str,
+    tickerSymbol: str
+  ) -> Tuple[Optional[datetime.date], pd.DataFrame]:
+  """We either use the whole file or we load all data from the data provider"""
+  if localData is None or localData.empty:
+    print(f"No local data available for {tickerSymbol} ({interval}). Fetching from {startDateParam} to {endDateParam}.")
+    return startDateParam, endDateParam
+  
+  #todo how to distinguish week start end end for filtering?
+  fileMinDate = localData.index.min().date()
+  fileMaxDate = localData.index.max().date()
+  fetchStartDate = startDateParam
+  fetchEndDate   = endDateParam
 
-  return fetchStartDate, baseDfForMerge
+  if fileMinDate <= startDateParam:
+    # use part from file
+    if endDateParam < fileMaxDate:
+      fetchStartDate, fetchEndDate =  None, None # this means all data from file
+    else:
+      # now only load data from internet which is still missing
+      fetchStartDate = fileMaxDate # for safety load the last day in case the data is not from day end
+      fetchEndDate = endDateParam
+
+  return fetchStartDate, fetchEndDate
+#------------------------------------------------------------------------------------------------------------------------------
+def fetchAndProcessIntervalData(ticker: str, startDt: datetime.date, endDt: datetime.date, interval: str) -> Optional[pd.DataFrame]:
+  path = constructParquetFilePath(ticker, interval)
+  dfFromFile = loadLocalData(path, ticker, interval)
+
+  fetchStartDate, fetchEndDate = determineFetchParameters(dfFromFile, startDt, endDt, interval, ticker)
+  if fetchStartDate is None:
+    print(f"No fetch needed for {ticker} ({interval}). Using existing local data.")
+    # filter data from file for startDt and endDt
+    finalDf = dfFromFile.copy()
+    finalDf = finalDf[finalDf.index.date >= startDt]
+    finalDf = finalDf[finalDf.index.date <= endDt]  
+  else:
+    print(f"Fetch needed for {ticker} ({interval}). Using file from [{startDt}, {fetchStartDate}[. Fetching [{fetchStartDate}, {endDt}].")
+    newData = getProvider().getHistoricalData(ticker, fetchStartDate, fetchEndDate, interval=interval)
+    # now merge the data
+    finalDf = pd.concat([dfFromFile, newData])
+    finalDf = finalDf[~finalDf.index.duplicated(keep='last')]
+    finalDf = finalDf.sort_index()      
+    saveData(finalDf, path)
+  return finalDf
 #--------------------------------------------------------------------------------------------------------------------------------
 def loadStockListFromFile(filename: str = "listStocks") -> List[str]:
   defaultStocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'NVDA', 'VOW.DE', 'META', 'JPM', 'BTC-USD', 'ETH-USD']
@@ -174,6 +180,15 @@ def loadStockListFromFile(filename: str = "listStocks") -> List[str]:
       saveStockListToFile(defaultStocks, filename)
     return stocks if stocks else defaultStocks
 #--------------------------------------------------------------------------------------------------------------------------------
+# file handling
+#--------------------------------------------------------------------------------------------------------------------------------
+def constructParquetFilePath(tickerSymbol: str, interval: str, dataDirName: str = "data") -> str:
+  intervalSuffix = interval.replace('k','').replace('m','min')
+  scriptDir = os.path.dirname(os.path.abspath(__file__))
+  dataDirPath = os.path.join(scriptDir, dataDirName)
+  os.makedirs(dataDirPath, exist_ok=True)
+  return os.path.join(dataDirPath, f"{tickerSymbol}_{intervalSuffix}.parquet")
+#--------------------------------------------------------------------------------------------------------------------------------
 def saveStockListToFile(tickers, filename: str = "listStocks"):
   scriptDir = os.path.dirname(os.path.abspath(__file__))
   filePath = os.path.join(scriptDir, filename)
@@ -185,59 +200,30 @@ def saveStockListToFile(tickers, filename: str = "listStocks"):
   except Exception as e:
     print(f"Error saving stocklist to '{filePath}': {e}")
 #--------------------------------------------------------------------------------------------------------------------------------
-def saveDataIfNeeded(dataToSave: pd.DataFrame, originalLocalData: Optional[pd.DataFrame],
-                    parquetFilePath: str, tickerSymbol: str, interval: str) -> None:
+def loadLocalData(parquetFilePath: str, tickerSymbol: str, interval: str) -> Optional[pd.DataFrame]:
+  if os.path.exists(parquetFilePath):
+    try:
+      print(f"Attempting to load {interval} data for {tickerSymbol} from {parquetFilePath}")
+      localDfCandidate = pd.read_parquet(parquetFilePath)
+      if not localDfCandidate.empty and isinstance(localDfCandidate.index, pd.DatetimeIndex):
+        minDate = localDfCandidate.index.min()
+        maxDate = localDfCandidate.index.max()
+        if localDfCandidate.index.tz is not None:
+          localDfCandidate.index = localDfCandidate.index.tz_convert(None)
+        print(f"Successfully loaded from {minDate} to {maxDate} for {tickerSymbol} from local parquet.")
+        return localDfCandidate
+      else:
+        print(f"Local parquet file for {tickerSymbol} ({interval}) was empty or had invalid index.")
+    except Exception as e:
+      print(f"Error reading parquet file {parquetFilePath} for {tickerSymbol} ({interval}): {e}.")
+  return None
+#--------------------------------------------------------------------------------------------------------------------------------
+def saveData(dataToSave: pd.DataFrame, parquetFile: str) -> None:
   if dataToSave.empty:
-    print(f"Final DataFrame for {tickerSymbol} ({interval}) is empty. Nothing to save to parquet.")
+    print(f"Final DataFrame for {parquetFile} is empty. Nothing to save to parquet.")
     return
-
-  if not isinstance(dataToSave.index, pd.DatetimeIndex):
-    try:
-      dataToSave.index = pd.to_datetime(dataToSave.index)
-    except Exception as e:
-      print(f"Error converting dataToSave index to DatetimeIndex for {tickerSymbol} ({interval}): {e}. Skipping save.")
-      return
-  if dataToSave.index.tz is not None:
-    dataToSave.index = dataToSave.index.tz_convert(None)
-
-  shouldSave = False
-  reasonForSave: List[str] = []
-
-  if originalLocalData is None or originalLocalData.empty:
-    shouldSave = True
-    reasonForSave.append("No valid original local data existed.")
-  else:
-    comparableOriginalLocalData = originalLocalData.copy()
-    if not isinstance(comparableOriginalLocalData.index, pd.DatetimeIndex):
-      try:
-        comparableOriginalLocalData.index = pd.to_datetime(comparableOriginalLocalData.index)
-      except Exception:
-        shouldSave = True
-        reasonForSave.append("Original local data had a non-convertible index.")
-    
-    if not shouldSave and comparableOriginalLocalData.index.tz is not None:
-      comparableOriginalLocalData.index = comparableOriginalLocalData.index.tz_convert(None)
-
-    if not shouldSave:
-      if dataToSave.index.min() < comparableOriginalLocalData.index.min():
-        shouldSave = True
-        reasonForSave.append(f"Data now starts earlier ({dataToSave.index.min()} vs {comparableOriginalLocalData.index.min()}).")
-
-      if dataToSave.index.max() > comparableOriginalLocalData.index.max():
-        shouldSave = True
-        reasonForSave.append(f"Data now ends later ({dataToSave.index.max()} vs {comparableOriginalLocalData.index.max()}).")
-
-      if not shouldSave and not dataToSave.equals(comparableOriginalLocalData):
-        shouldSave = True
-        reasonForSave.append("Content has changed.")
-
-  if shouldSave:
-    finalReason = " ".join(reasonForSave)
-    print(f"Saving data for {tickerSymbol} ({interval}). Reason(s): {finalReason}")
-    try:
-      dataToSave.to_parquet(parquetFilePath, engine='pyarrow', index=True)
-      print(f"Saved/Updated data for {tickerSymbol} ({interval}) to {parquetFilePath}")
-    except Exception as e:
-      print(f"Error saving data for {tickerSymbol} ({interval}) to parquet {parquetFilePath}: {e}")
-  else:
-    print(f"Data for {tickerSymbol} ({interval}) is effectively unchanged compared to local data. No save needed.")
+  print(f"Saving data for {parquetFile}.")
+  try:
+    dataToSave.to_parquet(parquetFile, engine='pyarrow', index=True)
+  except Exception as e:
+    print(f"Error saving data to parquet {parquetFile}: {e}")
