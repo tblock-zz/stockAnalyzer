@@ -70,6 +70,19 @@ class InteractiveBrokersProvider(MarketDataProvider):
   def getHistoricalData(self, tickerSymbol: str, startDate: datetime.date, endDate: datetime.date, interval: str ='1d') -> pd.DataFrame:
     if ib.isOpen():
       ib.Interval.set(interval)
+      # calculate period
+      period = endDate - startDate
+      strPeriod = f""
+      if period.days < 5:
+        days = max(period.days, 1)  
+        strPeriod = f"{days} D"
+      elif period.days < 28:
+        strPeriod = f"{(period.days+6) // 7} W"
+      elif period.days < 365: # less than a year
+        strPeriod = f"{(period.days+29) // 30} M" 
+      else: # more than a year
+        strPeriod = f"{(period.days+364) // 365} Y"
+      ib.Interval.setPeriod(strPeriod)  
       try:
         df = ib.get(tickerSymbol)
       except Exception:
@@ -98,12 +111,13 @@ class InteractiveBrokersProvider(MarketDataProvider):
     except Exception as e:
       return {"error": f"Could not retrieve company info for {tickerSymbol}: {str(e)}"}
 #--------------------------------------------------------------------------------------------------------------------------------
-def getProvider() -> MarketDataProvider:
+def getProvider(useIbkr:bool = True) -> MarketDataProvider:
   """Returns the market data provider based on the configuration."""
   # Check if Interactive Brokers is available
-  if globalsSa.HAS_IBKR:
+  if globalsSa.HAS_IBKR and useIbkr:
     try:
       provider = InteractiveBrokersProvider()
+      print("### Using Ibkr as data provider ###")
       return provider
     except Exception as e:
       globalsSa.HAS_IBKR = False
@@ -139,7 +153,7 @@ def determineFetchParameters(
 
   return fetchStartDate, fetchEndDate
 #------------------------------------------------------------------------------------------------------------------------------
-def fetchAndProcessIntervalData(ticker: str, startDt: datetime.date, endDt: datetime.date, interval: str) -> Optional[pd.DataFrame]:
+def fetchAndProcessIntervalData(ticker: str, startDt: datetime.date, endDt: datetime.date, interval: str, useIbkr:bool) -> Optional[pd.DataFrame]:
   path = constructParquetFilePath(ticker, interval)
   dfFromFile = loadLocalData(path, ticker, interval)
 
@@ -152,7 +166,7 @@ def fetchAndProcessIntervalData(ticker: str, startDt: datetime.date, endDt: date
     finalDf = finalDf[finalDf.index.date <= endDt]  
   else:
     print(f"Fetch needed for {ticker} ({interval}). Using file from [{startDt}, {fetchStartDate}[. Fetching [{fetchStartDate}, {endDt}].")
-    newData = getProvider().getHistoricalData(ticker, fetchStartDate, fetchEndDate, interval=interval)
+    newData = getProvider(useIbkr).getHistoricalData(ticker, fetchStartDate, fetchEndDate, interval=interval)
     # now merge the data
     finalDf = pd.concat([dfFromFile, newData])
     finalDf = finalDf[~finalDf.index.duplicated(keep='last')]

@@ -31,16 +31,17 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
   - `threading`
   - `typing`
   - `curl_cffi` (for handling rate limits in `yfinance`)
+  - `ibapi`
 
 ## Installation
 
 1. Clone the repository or download the `stockAnalyzer.py` file.
 2. Install the required dependencies using pip:
    ```bash
-   pip install pandas numpy matplotlib mplfinance yfinance curl-cffi datetime threading typing
+   pip install pandas numpy matplotlib mplfinance yfinance curl-cffi datetime threading typing ibapi
    ```
 3. Run the script:
-   ```bash
+   ```
    python stockAnalyzer.py
    ```
 
@@ -71,3 +72,4 @@ Apache-2.0 license
 
 - [Yahoo Finance API](https://github.com/ranaroussi/yfinance)
 - [mplfinance](https://github.com/matplotlib/mplfinance)
+- [InteractiveBrokers Download](https://interactivebrokers.github.io/)
