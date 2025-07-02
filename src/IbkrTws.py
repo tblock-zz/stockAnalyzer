@@ -84,7 +84,8 @@ class IbApi(EWrapper, EClient):
         print(f"Error:{errorCode}, Id:{reqId}, Msg:{errorString}, AdvancedOrderRejectJson:{advancedOrderRejectJson}")
       else:
         print(f"Error:{errorCode}, Id:{reqId}, ticker:{gCurrentTicker}, Msg:{errorString}")
-      #self.data_received_event.set()
+      if errorCode == 200:  
+        self.data_received_event.set()
     else:
       #print("Error:", errorCode, "Id:", reqId, "Msg:", errorString, "AdvancedOrderRejectJson:", advancedOrderRejectJson)
       pass
