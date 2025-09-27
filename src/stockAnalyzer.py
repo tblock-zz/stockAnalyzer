@@ -64,6 +64,26 @@ class ChartingUtils:
         addPlots.append(mpf.make_addplot(plotDf['BbUpper'], panel=0, color='darkgray', linestyle='--', width=0.7))
         addPlots.append(mpf.make_addplot(plotDf['BbLower'], panel=0, color='darkgray', linestyle='--', width=0.7))
   #--------------------------------------------------------------------------------------------------------------------------------
+  def addEmptyPlot(self, addPlots, panelId, dataLength: int = 0):
+    import pandas as pd
+    import numpy as np    
+    try:
+      if dataLength > 0:
+        # Erstelle eine Serie mit NaN-Werten
+        empty_series = pd.Series([np.nan] * dataLength)
+        # Füge einen minimalen Wert hinzu, damit mplfinance nicht abstürzt
+        if len(empty_series) > 0:
+          empty_series.iloc[0] = 0.0  # Minimaler Wert am Anfang
+      else:
+        empty_series = pd.Series([0.0])  # Fallback      
+      addPlots.append(mpf.make_addplot(empty_series, panel=panelId, color='white', ylabel='', y_on_right=False,
+        ylim=(0, 1),         # Minimale Y-Skala
+        alpha=0.0            # Mach den Plot unsichtbar
+      ))      
+    except Exception as e:
+      print(f"Warning: Could not create empty plot for panel {panelId}: {e}")
+      exit()
+  #--------------------------------------------------------------------------------------------------------------------------------
   def addMacdToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]], currentPanelId: int) -> bool:
     if 'Macd' in plotDf.columns and not plotDf['Macd'].isnull().all():
       onRight = False
@@ -94,7 +114,7 @@ class ChartingUtils:
   def addStochasticToPlot(self, plotDf: pd.DataFrame, addPlots: List[Dict[str, Any]], currentPanelId: int) -> bool:
     if 'stochK' in plotDf.columns and not plotDf['stochK'].isnull().all():
       onRight = False
-      addPlots.append(mpf.make_addplot(plotDf['stochK'], panel=currentPanelId, color='lightgreen', ylim=(0,100), width=0.8, y_on_right=onRight, ylabel='STOCH'))
+      addPlots.append(mpf.make_addplot(plotDf['stochK'], panel=currentPanelId, color='lightgreen', ylabel='STOCH', ylim=(0,100), width=0.8, y_on_right=onRight))
       addPlots.append(mpf.make_addplot(plotDf['stochKSlow'], panel=currentPanelId, color='green' , ylim=(0,100), width=0.8, y_on_right=True))
       if 'stochD' in plotDf.columns and not plotDf['stochD'].isnull().all():
         addPlots.append(mpf.make_addplot(plotDf['stochD'], panel=currentPanelId, color='orangered', width=0.8, y_on_right=onRight))
@@ -109,6 +129,11 @@ class ChartingUtils:
     nextIndicatorPanelId = 2
     indicatorPanelRatioValues: List[int] = []
     nrOfAppends = 2
+    if False:
+      # add empty plot
+      self.addEmptyPlot(addPlots, nextIndicatorPanelId, len(plotDf))
+      indicatorPanelRatioValues.append(1)
+      nextIndicatorPanelId += 1
     if self.addMacdToPlot(plotDf, addPlots, nextIndicatorPanelId):
       indicatorPanelRatioValues.append(nrOfAppends)
       self.macdPanelId = nextIndicatorPanelId
@@ -152,7 +177,7 @@ class ChartingUtils:
     addPlots: List[Dict[str, Any]] = []
     self.addBollingerBandsToPlot(plotDf, addPlots)
     self.configureIndicatorPlots(plotDf, addPlots)
-    finalPanelRatios = tuple([6, 1, 3, 2, 2])
+    finalPanelRatios = tuple([6, 1, 3, 3, 2])
     mpfStyle = self.createMpfStyle()
     fig: Optional[plt.Figure] = None
 
@@ -170,6 +195,15 @@ class ChartingUtils:
         returnfig=True,
         update_width_config=dict(candle_linewidth=0.7, candle_width=0.6)
       )
+      # a fix, since y_on_right in addPlots.append does not work
+      if fig is not None:
+        axes = fig.get_axes()
+        for i, ax in enumerate(axes):
+          if i in [5,7,9]:
+            ax.set_yticks([])
+            ax.set_ylabel('')
+            ax.spines['left'].set_visible(False)
+            ax.spines['right'].set_visible(False)
     except Exception as e:
       print(f"Error in mplfinance.plot for {tickerSymbol} ({chartTimeframe}): {e}")
       import traceback
