@@ -591,7 +591,12 @@ class StockAnalyzerApp:
       startDt, endDt, dispStartTs = calculateDateRanges(years)
       dailyDf = self.fetchAndProcessIntervalData(ticker, startDt, endDt, dispStartTs, '1d')
       weeklyDf = self.fetchAndProcessIntervalData(ticker, startDt, endDt, dispStartTs, '1wk')
-      infoVal = self.dataProvider.getCompanyInfo(ticker)
+      infoVal = ""
+      try:
+        infoVal = self.dataProvider.getCompanyInfo(ticker)
+      except Exception as e_info:
+        print(f"Error fetching company info for {ticker}: {e_info}")
+        infoVal = {"error": f"Failed to fetch company info: {e_info}"}  
       if isinstance(infoVal, dict) and infoVal.get("error"):
         print(f"Company info error {ticker}: {infoVal.get('error')}")
       payload: Dict[str, Any] = {

@@ -19,7 +19,6 @@ except:
   globalsSa.HAS_IBKR = False
 #--------------------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------------------
-
 class MarketDataProvider:
   #--------------------------------------------------------------------------------------------------------------------------------
   def getHistoricalData(self, tickerSymbol: str, startDate: datetime.date, endDate: datetime.date, interval: str ='1d') -> pd.DataFrame:
@@ -28,22 +27,70 @@ class MarketDataProvider:
   def getCompanyInfo(self, tickerSymbol: str) -> Dict[str, Any]:
     raise NotImplementedError
 #--------------------------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------------------------
 class YFinanceProvider(MarketDataProvider):
+  def __init__(self):
+    self.df = pd.DataFrame()
+  #--------------------------------------------------------------------------------------------------------------------------------
+  # class function
+  @staticmethod
+  def resampleMap() -> Dict[str, str]:
+    return {
+          'Open': 'first',
+          'High': 'max',
+          'Low': 'min',
+          'Close': 'last',
+          'Volume': 'sum'
+      }
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def isInvalid(self) -> bool:
+    return self.df.empty or pd.Timestamp.now(tz='UTC').weekday() >= 5
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def getTimeDifference(self) -> int:
+    currentTime = pd.Timestamp.now(tz='UTC')
+    lastDataTime = self.df.index[-1]
+    lastDataTime = lastDataTime.tz_localize('UTC') if lastDataTime.tzinfo is None else lastDataTime.tz_convert('UTC')
+    return (currentTime - lastDataTime)
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def getTimeDifferenceInMinutes(self) -> int:
+    return self.getTimeDifference().total_seconds() / 60
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def getTimeDifferenceInDays(self) -> int:
+    return self.getTimeDifference().days
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def handleCurrentDay(self, ticker: yf.Ticker, interval: str) -> pd.DataFrame:
+    # if empty or current day is saturday or sunday, no need to update
+    if self.isInvalid():
+      return
+    if self.getTimeDifferenceInMinutes() > 1 and 'Close' in self.df.columns:
+      dfNew = ticker.history(period='1d', interval='1m', auto_adjust=True, prepost=False)      
+      dfNewD = dfNew.resample('D').agg(YFinanceProvider.resampleMap()) # resample minute to daily
+      self.df = pd.concat([self.df, dfNewD])
+      self.df = self.df[~self.df.index.duplicated(keep='last')]
+  #--------------------------------------------------------------------------------------------------------------------------------
+  def handleCurrentWeek(self, ticker: yf.Ticker) -> pd.DataFrame:
+    if self.isInvalid():
+      return
+    # we have the days already in self.df, so just resample to weeks
+    self.df = self.df.resample('W').agg(YFinanceProvider.resampleMap()) # resample daily to weekly
   #--------------------------------------------------------------------------------------------------------------------------------
   def getHistoricalData(self, tickerSymbol: str, startDate: datetime.date, endDate: datetime.date, interval: str ='1d') -> pd.DataFrame:
     global session
     if session is None:
       session = requests.Session(impersonate="chrome")
     ticker = yf.Ticker(tickerSymbol, session=session)
-    df = ticker.history(start=startDate, end=endDate, interval=interval, auto_adjust=True, prepost=False)
-    if df.empty:
+    self.df = ticker.history(start=startDate, end=endDate, interval=interval, auto_adjust=True, prepost=False)
+    if self.df.empty:
       return pd.DataFrame()
-    df.rename(columns={col: col.capitalize() for col in df.columns if col in ['open', 'high', 'low', 'close', 'volume']}, inplace=True)
-
-    if isinstance(df.index, pd.DatetimeIndex):
-      if df.index.tz is not None:
-        df.index = df.index.tz_convert(None)
-    return df
+    if "d" in interval:
+      self.handleCurrentDay(ticker, interval)
+    if "w" in interval:
+      self.handleCurrentWeek(ticker)
+    self.df.rename(columns={col: col.capitalize() for col in self.df.columns if col in ['open', 'high', 'low', 'close', 'volume']}, inplace=True)
+    if isinstance(self.df.index, pd.DatetimeIndex):
+      if self.df.index.tz is not None:
+        self.df.index = self.df.index.tz_convert(None)
+    return self.df
   #--------------------------------------------------------------------------------------------------------------------------------
   def getCompanyInfo(self, tickerSymbol: str) -> Dict[str, Any]:
     ticker = yf.Ticker(tickerSymbol)
@@ -58,6 +105,7 @@ class YFinanceProvider(MarketDataProvider):
       return info
     except Exception as e:
       return {"error": f"Could not retrieve company info for {tickerSymbol}: {str(e)}"}
+#--------------------------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------------------------
 class InteractiveBrokersProvider(MarketDataProvider):
   def __init__(self):
