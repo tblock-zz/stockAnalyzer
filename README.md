@@ -20,7 +20,7 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 
 ## Requirements
 
-- Python 3.10 or higher
+- Python 3.13 (did not test with 3.14 or higher)
 - Required Python libraries:
   - `datetime`
   - `pandas`
@@ -38,11 +38,12 @@ The `stockAnalyzer.py` script is a Python-based application for analyzing stock 
 1. Clone the repository.
 2. Install the required dependencies using pip:
    ```bash
-   pip install pandas numpy matplotlib mplfinance yfinance curl-cffi datetime threading typing ibapi
+   cd stockAnalyzer
+   pip install -r requirements.txt
    ```
 3. Run the script:
    ```
-   cs src
+   cd src
    python stockAnalyzer.py
    ```
 
